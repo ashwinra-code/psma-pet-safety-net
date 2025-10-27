@@ -1,0 +1,1152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>PSMA‑PET Safety Net — 3‑Agent Pipeline (TypeScript Parity)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root { --ink:#111827; --muted:#6b7280; --bg:#f3f4f6; --card:#ffffff; --line:#e5e7eb; --accent:#0f172a; }
+  html, body { margin:0; padding:0; background:var(--bg); color:var(--ink); font:15px/1.55 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  .top { background:#111827; color:#fff; padding:14px 20px; display:flex; justify-content:space-between; align-items:center; }
+  .top h1 { margin:0; font-size:16px; letter-spacing:.2px; }
+  .wrap { max-width:1200px; margin:22px auto; padding:0 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; box-shadow:0 1px 2px rgba(0,0,0,.04); }
+  .section { padding:16px 18px; }
+  .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .muted { color:var(--muted); }
+  textarea { width:100%; min-height:240px; padding:10px; border:1px solid var(--line); border-radius:10px; background:#fbfbfc; font:13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; box-sizing:border-box; }
+  input[type=text] { padding:8px 10px; border:1px solid var(--line); border-radius:10px; min-width: 380px; }
+  button { padding:10px 14px; border:1px solid var(--line); border-radius:10px; background:#fff; cursor:pointer; }
+  button.primary { background:var(--ink); color:#fff; border-color:var(--ink); }
+  pre { background:#f9fafb; color:var(--ink); border:1px solid var(--line); padding:12px; border-radius:10px; overflow:auto; max-height:560px; white-space:pre-wrap; }
+  pre.dark { background:#1e293b; color:#e2e8f0; border-color:#334155; font-size:12px; }
+  .hidden { display:none; }
+  .small { font-size:12px; color:var(--muted); }
+  .pill { display:inline-block; padding:3px 8px; border-radius:999px; background:#eef2ff; color:#3730a3; font-weight:600; font-size:12px; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .ok { color:#10b981; } .warn { color:#f59e0b; } .err { color:#ef4444; }
+  @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  .spinner { display:inline-block; width:14px; height:14px; border:2.5px solid transparent; border-top-color:#3b82f6; border-right-color:#8b5cf6; border-bottom-color:#ec4899; border-radius:50%; animation:spin 0.7s linear infinite; margin-left:8px; vertical-align:middle; }
+  .progress-bar { position:fixed; bottom:0; left:0; right:0; height:3px; background:#e5e7eb; z-index:9999; display:none; }
+  .progress-bar.active { display:block; }
+  .progress-bar::after { content:''; position:absolute; top:0; left:0; height:100%; width:0%; background:linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899); animation:progress 2s ease-in-out infinite; }
+  @keyframes progress { 0% { width:0%; } 50% { width:70%; } 100% { width:100%; } }
+</style>
+</head>
+<body>
+  <div class="top">
+    <h1>PSMA-PET Incidental Finding Defender</h1>
+    <div class="row"><span class="pill">v10</span></div>
+  </div>
+
+  <div class="wrap">
+    <div class="card section">
+      <div class="row" style="justify-content:space-between;">
+        <div>
+          <div><b>Report input</b></div>
+          <div class="small">3-agent pipeline with LLM-based rules matching.</div>
+        </div>
+        <div class="row"><button id="sample1">Load sample #1</button><button id="sample5">Load sample #2</button></div>
+      </div>
+      <textarea id="report" placeholder="Paste PSMA‑PET report text here…"></textarea>
+
+      <div class="row" style="margin-top:10px; align-items:flex-start;">
+        <div class="row" style="gap:8px; align-items:center;">
+          <button class="primary" id="run">Analyze</button>
+          <button id="reset">Reset</button>
+          <span id="status" class="muted">idle</span>
+        </div>
+
+        <div style="margin-left:auto; max-width:680px;">
+          <div class="small">Local LLM (OpenAI‑compatible <code>/chat/completions</code>)</div>
+          <div class="row" style="gap:8px; margin-top:4px;">
+            <input id="llmUrl" type="text" value="http://127.0.0.1:1234/v1/chat/completions" />
+            <input id="llmModel" type="text" value="mistral-7b-instruct-v0.3" />
+            <button id="testLLM">Test</button>
+            <button id="saveLLM" title="Save endpoint">Save</button>
+          </div>
+          <div id="llmStatus" class="small"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card section" style="margin-top:16px;">
+      <div class="row" style="justify-content:space-between;">
+        <div><b>PSMA‑PET SAFETY NET REPORT</b></div>
+        <div class="row">
+          <button id="copyReport">Copy Report</button>
+          <button id="downloadReport">Download .txt</button>
+        </div>
+      </div>
+      <pre id="reportOut" class="hidden"></pre>
+    </div>
+
+    <div class="card section" style="margin-top:16px;">
+      <b>Agent 1: Findings Extractor (JSON)</b>
+      <pre id="agent1Out" class="dark hidden"></pre>
+    </div>
+
+    <div class="card section" style="margin-top:16px;">
+      <b>Agent 2: Rules Engine (JSON)</b>
+      <pre id="agent2Out" class="dark hidden"></pre>
+    </div>
+
+    <div class="card section" style="margin-top:16px;">
+      <b>Pipeline Debug</b>
+      <pre id="debugOut" class="dark hidden"></pre>
+    </div>
+  </div>
+
+  <div id="progressBar" class="progress-bar"></div>
+
+<script>
+/* ==================== RULES v2.0 DATABASE ==================== */
+const RULES_V2 = `# PSMA-PET INCIDENTAL FINDINGS RULES v2.0
+
+## CORE PRINCIPLE
+Any NEW or INDETERMINATE finding gets follow-up unless explicitly benign.
+
+## LUNG FINDINGS
+
+### LUNG-HIGH: High-Risk Nodule
+**Criteria:** Size ≥8mm with SUV ≥5.0 OR Size ≥10mm OR "suspicious" OR NEW ≥6mm
+**Priority:** URGENT | **Referrals:** Thoracic Surgery + Medical Oncology
+**Imaging:** CT chest with contrast in 2 weeks | **Guideline:** Fleischner 2017
+
+### LUNG-MODERATE: Moderate-Risk Nodule  
+**Criteria:** Size 4-8mm with SUV ≥3.0 OR Size 6-10mm OR "indeterminate" OR Multiple nodules
+**Priority:** ROUTINE | **Referrals:** Pulmonology
+**Imaging:** CT chest in 3-6 months | **Guideline:** Fleischner 2017
+
+### LUNG-LOW: Low-Risk Nodule
+**Criteria:** Size <4mm AND SUV <3.0 AND "likely benign"
+**Priority:** SURVEILLANCE | **Action:** Document only, repeat at next scan
+**Guideline:** Fleischner 2017
+
+## BONE FINDINGS
+
+### BONE-HIGH: Non-Sclerotic Lesion
+**Criteria:** "lytic" or "mixed" OR (NOT "sclerotic" AND SUV ≥5.0) OR pathologic fracture risk
+**Priority:** URGENT | **Referrals:** Orthopedic Oncology + Medical Oncology
+**Imaging:** MRI in 2 weeks | **Rationale:** Atypical for prostate cancer
+**Guideline:** NCCN Bone Mets
+
+### BONE-EXPECTED: Sclerotic Lesion
+**Criteria:** "sclerotic" or "blastic", consistent with prostate mets
+**Priority:** ROUTINE | **Referrals:** GU Oncology at next visit
+**Action:** Document for treatment planning | **Guideline:** NCCN Prostate Cancer
+
+## LYMPH NODE FINDINGS
+
+### LN-HIGH: High-Risk Nodes
+**Criteria:** Size >3cm OR mediastinal/supraclavicular location OR SUV >15 OR NEW extra-pelvic
+**Priority:** URGENT | **Referrals:** Medical Oncology + site surgeon
+**Imaging:** CT with contrast in 2 weeks | **Guideline:** NCCN
+
+### LN-EXPECTED: Pelvic/Retroperitoneal Nodes
+**Criteria:** Pelvic or retroperitoneal, pattern consistent with prostate cancer
+**Priority:** ROUTINE | **Referrals:** GU Oncology at next visit
+**Action:** Document for treatment planning | **Guideline:** NCCN Prostate Cancer
+
+## LIVER FINDINGS
+
+### LIVER-HIGH: Focal Lesion
+**Criteria:** Focal lesion with SUV ≥4.0 OR size >1cm
+**Priority:** URGENT | **Referrals:** Hepatobiliary Surgery + Medical Oncology
+**Imaging:** Triphasic liver CT or MRI in 2-3 weeks
+**Rationale:** Liver mets rare in prostate cancer | **Guideline:** ACR LI-RADS
+
+### LIVER-BENIGN: Diffuse Uptake
+**Criteria:** Diffuse homogeneous uptake, no focal lesions
+**Priority:** DOCUMENT | **Action:** No follow-up needed
+
+## ADRENAL FINDINGS
+
+### ADRENAL-ANY: Any Adrenal Lesion
+**Criteria:** Nodule >1cm OR SUV ≥4.0
+**Priority:** ROUTINE | **Referrals:** Endocrine Surgery + Endocrinology
+**Imaging:** Adrenal CT with washout in 4-6 weeks
+**Labs:** Metanephrines (screen for pheo) | **Guideline:** ACR Adrenal Incidentaloma
+
+## OTHER FINDINGS
+
+### OTHER-HIGH: Unknown Site High Uptake
+**Criteria:** SUV ≥5.0 at unusual site
+**Priority:** ROUTINE | **Referrals:** PCP + site specialist
+**Imaging:** Site-specific imaging in 4-6 weeks
+
+### PROSTATE-EXPECTED: Normal Prostate Uptake
+**Criteria:** Uptake in prostate/prostate bed
+**Priority:** DOCUMENT | **Action:** No additional follow-up
+
+### PHYSIOLOGIC: Normal Physiologic Uptake
+**Criteria:** Parotid, salivary glands, liver (diffuse), bowel, urinary tract
+**Priority:** DOCUMENT | **Action:** No follow-up
+
+### INDETERMINATE: Catch-All for Unclear Findings
+**Criteria:** Report uses "indeterminate", "uncertain", "unclear" OR no clear rule match
+**Priority:** ROUTINE | **Action:** Radiology review + PCP notification
+**Imaging:** Site-specific follow-up in 3-6 months
+
+## PRIORITY DEFINITIONS
+**URGENT** = 1-2 weeks (concerning for malignancy)
+**ROUTINE** = 4-6 weeks (needs evaluation, not emergent)
+**SURVEILLANCE** = 3-6 months (low suspicion, follow-up imaging)
+**DOCUMENT** = No action (benign/expected)
+
+## RULE MATCHING PRIORITY
+1. Match most specific rule first
+2. "Indeterminate" description triggers INDETERMINATE unless size/SUV clearly HIGH/MODERATE
+3. NEW findings default to higher priority
+4. If no rule matches → use INDETERMINATE catch-all`;
+
+/* ==================== SCHEMAS ==================== */
+const FindingsExtractorSchema = {
+  patient_info: { mrn: "string", scan_date: "string", indication: "string" },
+  findings: [{
+    site: "enum:lung|bone|lymph_node|liver|adrenal|thyroid|prostate|parotid|others",
+    description: "string",
+    suvmax: "number|null",
+    size_mm: "number|null",
+    novelty: "enum:new|increased|stable|decreased|unknown",
+    suspicion: "enum:suspicious|indeterminate|metastatic|likely_benign|physiologic"
+  }],
+  expected_uptake: ["enum:prostate|parotid|liver|salivary_glands|bowel|urinary_tract"],
+  technical_quality: "enum:adequate|limited|poor",
+  global_notes: "string",
+  comparison_available: "boolean"
+};
+
+const RulesEngineExecuterSchema = {
+  red_flags: [{
+    finding_index: "number",
+    site: "enum:lung|bone|lymph_node|liver|adrenal|thyroid|prostate|parotid|others",
+    description: "string",
+    matched_rule: "string",
+    priority: "enum:High|Medium",
+    action: "string",
+    followup: "string",
+    rationale: "string",
+    guideline: "string"
+  }],
+  routine_surveillance: [{
+    finding_index: "number",
+    site: "enum:lung|bone|lymph_node|liver|adrenal|thyroid|prostate|parotid|others",
+    description: "string",
+    matched_rule: "string",
+    priority: "enum:Low",
+    action: "string",
+    followup: "string",
+    rationale: "string",
+    guideline: "string"
+  }],
+  benign_findings: [{
+    finding_index: "number",
+    site: "enum:lung|bone|lymph_node|liver|adrenal|thyroid|prostate|parotid|others",
+    description: "string",
+    priority: "enum:None",
+    note: "string"
+  }],
+  summary: {
+    total_findings: "number",
+    high_priority_count: "number",
+    medium_priority_count: "number",
+    low_priority_count: "number",
+    overall_risk: "enum:Critical|Elevated|Routine|Benign"
+  }
+};
+
+/* ==================== AGENT INSTRUCTIONS (Concise) ==================== */
+const AGENT1_INSTRUCTIONS = `Extract ALL findings from this PSMA-PET report as structured JSON.
+
+CRITICAL: Focus on sections that typically contain incidental findings:
+- HEAD AND NECK → Check THYROID, LYMPH NODES
+- CHEST → Check LUNGS, LYMPH NODES
+- ABDOMEN AND PELVIS → Check LIVER, ADRENAL GLANDS, KIDNEYS, LYMPH NODES
+
+For each finding extract:
+- site: lung|bone|lymph_node|liver|adrenal|thyroid|prostate|parotid|others
+- description: Complete sentence describing the finding (include size and SUV if mentioned)
+- suvmax: Number or null (if report says "SUV 2.1", extract 2.1)
+- size_mm: Number in millimeters or null (convert cm to mm: 1.1 cm = 11 mm)
+- novelty: new|increased|stable|decreased|unknown (only if explicitly compared to prior)
+- suspicion: suspicious|indeterminate|likely_benign|physiologic
+
+IGNORE these (not findings):
+- Lines saying "No abnormal uptake" or "Unremarkable"
+- Physiologic uptake in prostate, salivary glands, liver, bowel, bladder
+
+Also extract:
+- patient_info: {mrn, scan_date, indication} - use "Not specified" if not found
+- expected_uptake: Array like ["prostate", "parotid", "liver"] for normal physiologic sites
+- technical_quality: "adequate" (default)
+- global_notes: Brief summary from IMPRESSION if present
+- comparison_available: true if "COMPARISON:" has a date, false otherwise
+
+EXAMPLES:
+
+Input: "THYROID: Left thyroid lobe nodule measuring 1.1 cm with minimal radiotracer uptake (SUV 1.8)."
+Output Finding: {
+  "site": "thyroid",
+  "description": "Left thyroid lobe nodule measuring 1.1 cm with minimal radiotracer uptake (SUV 1.8)",
+  "suvmax": 1.8,
+  "size_mm": 11,
+  "novelty": "unknown",
+  "suspicion": "indeterminate"
+}
+
+Input: "ADRENAL GLANDS: Right adrenal nodule measuring 1.3 cm with mild radiotracer uptake (SUV 3.2)."
+Output Finding: {
+  "site": "adrenal",
+  "description": "Right adrenal nodule measuring 1.3 cm with mild radiotracer uptake (SUV 3.2)",
+  "suvmax": 3.2,
+  "size_mm": 13,
+  "novelty": "unknown",
+  "suspicion": "indeterminate"
+}
+
+Input: "LUNGS: Incidental 4mm non calcified pulmonary nodule in the right lower lobe with faint radio tracer uptake (SUV 2.1)."
+Output Finding: {
+  "site": "lung",
+  "description": "Incidental 4mm non calcified pulmonary nodule in the right lower lobe with faint radio tracer uptake (SUV 2.1)",
+  "suvmax": 2.1,
+  "size_mm": 4,
+  "novelty": "unknown",
+  "suspicion": "indeterminate"
+}
+
+Return ONLY valid JSON. Start with { and end with }. No markdown fences, no explanations.
+
+Expected structure:
+{
+  "patient_info": {"mrn": "Not specified", "scan_date": "Not specified", "indication": "Not specified"},
+  "findings": [
+    // Array of finding objects here
+  ],
+  "expected_uptake": ["prostate", "parotid", "liver"],
+  "technical_quality": "adequate",
+  "global_notes": "",
+  "comparison_available": false
+}`;
+
+const AGENT2_INSTRUCTIONS = `Match findings to clinical rules and determine required actions.
+
+You have access to PSMA-PET Incidental Findings Rules v2.0 below. For each finding from Agent 1:
+
+1. Identify anatomical site
+2. Check rule conditions (size, SUV, novelty, suspicion, descriptors)
+3. Match to specific rule_id (LUNG-HIGH, BONE-EXPECTED, etc.)
+4. Extract: action, followup, priority, rationale, guideline
+5. Categorize into THREE separate arrays:
+   - red_flags: High/Medium priority (URGENT)
+   - routine_surveillance: Low priority (ROUTINE/SURVEILLANCE)
+   - benign_findings: None priority (DOCUMENT)
+
+Priority mapping:
+- URGENT → High or Medium priority
+- ROUTINE → Low priority
+- SURVEILLANCE → Low priority
+- DOCUMENT → None priority
+
+CRITICAL: You MUST return this EXACT JSON structure:
+{
+  "red_flags": [
+    {
+      "finding_index": 0,
+      "site": "lung",
+      "description": "...",
+      "matched_rule": "LUNG-HIGH",
+      "priority": "High",
+      "action": "...",
+      "followup": "...",
+      "rationale": "...",
+      "guideline": "..."
+    }
+  ],
+  "routine_surveillance": [
+    {
+      "finding_index": 1,
+      "site": "lung",
+      "description": "...",
+      "matched_rule": "LUNG-MODERATE",
+      "priority": "Low",
+      "action": "...",
+      "followup": "...",
+      "rationale": "...",
+      "guideline": "..."
+    }
+  ],
+  "benign_findings": [
+    {
+      "finding_index": 2,
+      "site": "prostate",
+      "description": "...",
+      "priority": "None",
+      "note": "..."
+    }
+  ],
+  "summary": {
+    "total_findings": 3,
+    "high_priority_count": 1,
+    "medium_priority_count": 0,
+    "low_priority_count": 1,
+    "overall_risk": "Elevated"
+  }
+}
+
+IMPORTANT RULES:
+- ALL prostate findings MUST go in benign_findings (these are expected for prostate cancer patients)
+- DO NOT return a flat array. DO NOT return any other structure.
+- If no rule matches, use "INDETERMINATE" catch-all.
+- Use MOST SPECIFIC rule when multiple match.
+- NEW or INCREASED lesions get higher priority.
+
+Return ONLY valid JSON matching the structure above. No markdown, no explanation.`;
+
+const AGENT3_INSTRUCTIONS = `Create a visually polished PSMA-PET safety net report using Unicode box-drawing characters.
+
+Use this EXACT structure:
+
+╔═══════════════════════════════════════════════════════════════╗
+║           PSMA-PET SAFETY NET REPORT                          ║
+╚═══════════════════════════════════════════════════════════════╝
+
+┌─ INCIDENTAL FINDINGS ─────────────────────────────────────────┐
+
+  • [Finding description with size/SUV if available]
+  • [Another finding if present]
+
+(If no findings: "  No incidental findings identified.")
+
+└───────────────────────────────────────────────────────────────┘
+
+┌─ NEXT STEPS ──────────────────────────────────────────────────┐
+
+  → [Clinical action with timeline]
+
+  → [Another action if present]
+
+(If no actions: "  → Routine follow-up; no urgent action required.")
+
+└───────────────────────────────────────────────────────────────┘
+
+FORMATTING RULES:
+- Use • (bullet) for findings, → (arrow) for actions
+- Indent all content 2 spaces within boxes
+- Add blank line between separate findings/actions
+- Keep line length ~60-65 characters, wrap text naturally
+- List ALL findings from red_flags and routine_surveillance
+- Condense actions from followup/action fields
+- Prioritize urgent actions first, then routine
+
+EXCLUDE:
+- Patient demographics (MRN, scan date, indication)
+- Benign/physiologic findings (prostate, parotid, etc.)
+- Matched rules, rationale, guideline references
+- Priority icons or risk levels
+
+Return ONLY the formatted report. No JSON, no markdown fences.`;
+
+/* ==================== LLM HELPERS ==================== */
+async function callLLM(endpoint, model, systemPrompt, userContent, maxTokens = 2000) {
+  const messages = [{
+    role: "user",
+    content: `SYSTEM: ${systemPrompt}\n\nUSER: ${userContent}`
+  }];
+
+  const payload = {
+    model: model,
+    temperature: 0,
+    max_tokens: maxTokens,
+    stream: false,
+    messages: messages
+  };
+
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    
+    if (!data.choices || !data.choices[0] || !data.choices[0].message || !data.choices[0].message.content) {
+      throw new Error("Invalid response structure from LLM");
+    }
+
+    return data.choices[0].message.content;
+  } catch (error) {
+    throw new Error(`LLM call failed: ${error.message}`);
+  }
+}
+
+function repairJSON(text) {
+  // Remove markdown code fences
+  text = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+
+  // Remove trailing commas before closing brackets
+  text = text.replace(/,(\s*[}\]])/g, "$1");
+
+  // Try to extract just the JSON object if there's extra text
+  const firstBrace = text.indexOf('{');
+  const lastBrace = text.lastIndexOf('}');
+
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    text = text.substring(firstBrace, lastBrace + 1);
+  }
+
+  return text;
+}
+
+function validateSchema(obj, schemaName) {
+  if (schemaName === "FindingsExtractor") {
+    if (!obj.patient_info) obj.patient_info = { mrn: "unknown", scan_date: "unknown", indication: "unknown" };
+    if (!Array.isArray(obj.findings)) obj.findings = [];
+    if (!Array.isArray(obj.expected_uptake)) obj.expected_uptake = [];
+    if (!obj.technical_quality) obj.technical_quality = "adequate";
+    if (!obj.global_notes) obj.global_notes = "";
+    if (typeof obj.comparison_available !== "boolean") obj.comparison_available = false;
+
+    obj.findings = obj.findings.filter(f => f.site && f.description).map(f => ({
+      site: f.site,
+      description: f.description,
+      suvmax: typeof f.suvmax === "number" ? f.suvmax : null,
+      size_mm: typeof f.size_mm === "number" ? f.size_mm : null,
+      novelty: f.novelty || "unknown",
+      suspicion: f.suspicion || "indeterminate"
+    }));
+  } else if (schemaName === "RulesEngine") {
+    // Handle case where LLM returns a flat array instead of proper structure
+    if (Array.isArray(obj) && !obj.red_flags && !obj.routine_surveillance) {
+      console.warn("Agent 2 returned flat array - restructuring...");
+      const flatArray = obj;
+      obj = {
+        red_flags: [],
+        routine_surveillance: [],
+        benign_findings: [],
+        summary: { total_findings: 0, high_priority_count: 0, medium_priority_count: 0, low_priority_count: 0, overall_risk: "Benign" }
+      };
+
+      // Categorize based on priority field
+      flatArray.forEach(item => {
+        const priority = item.priority || "None";
+        if (priority === "High" || priority === "Medium" || priority === "URGENT") {
+          obj.red_flags.push({
+            finding_index: item.finding_index,
+            site: item.site,
+            description: item.description || item.desc || "",
+            matched_rule: item.matched_rule || "UNKNOWN",
+            priority: priority === "URGENT" ? "High" : priority,
+            action: item.action || "",
+            followup: item.followup || "",
+            rationale: item.rationale || "",
+            guideline: item.guideline || ""
+          });
+        } else if (priority === "Low" || priority === "ROUTINE" || priority === "SURVEILLANCE") {
+          obj.routine_surveillance.push({
+            finding_index: item.finding_index,
+            site: item.site,
+            description: item.description || item.desc || "",
+            matched_rule: item.matched_rule || "UNKNOWN",
+            priority: "Low",
+            action: item.action || "",
+            followup: item.followup || "",
+            rationale: item.rationale || "",
+            guideline: item.guideline || ""
+          });
+        } else {
+          obj.benign_findings.push({
+            finding_index: item.finding_index,
+            site: item.site,
+            description: item.description || item.desc || "",
+            priority: "None",
+            note: item.note || item.action || ""
+          });
+        }
+      });
+    }
+
+    // Ensure all required fields exist
+    if (!Array.isArray(obj.red_flags)) obj.red_flags = [];
+    if (!Array.isArray(obj.routine_surveillance)) obj.routine_surveillance = [];
+    if (!Array.isArray(obj.benign_findings)) obj.benign_findings = [];
+    if (!obj.summary) obj.summary = {
+      total_findings: 0,
+      high_priority_count: 0,
+      medium_priority_count: 0,
+      low_priority_count: 0,
+      overall_risk: "Benign"
+    };
+
+    // Enforce rule: ALL prostate findings must be in benign_findings
+    const prostateFromRedFlags = obj.red_flags.filter(r => r.site === "prostate");
+    const prostateFromRoutine = obj.routine_surveillance.filter(r => r.site === "prostate");
+
+    if (prostateFromRedFlags.length > 0 || prostateFromRoutine.length > 0) {
+      console.warn("Moving prostate findings to benign_findings (expected for prostate cancer patients)");
+
+      // Move prostate findings from red_flags to benign_findings
+      prostateFromRedFlags.forEach(r => {
+        obj.benign_findings.push({
+          finding_index: r.finding_index,
+          site: r.site,
+          description: r.description,
+          priority: "None",
+          note: "Expected uptake in prostate (known malignancy)"
+        });
+      });
+      obj.red_flags = obj.red_flags.filter(r => r.site !== "prostate");
+
+      // Move prostate findings from routine_surveillance to benign_findings
+      prostateFromRoutine.forEach(r => {
+        obj.benign_findings.push({
+          finding_index: r.finding_index,
+          site: r.site,
+          description: r.description,
+          priority: "None",
+          note: "Expected uptake in prostate (known malignancy)"
+        });
+      });
+      obj.routine_surveillance = obj.routine_surveillance.filter(r => r.site !== "prostate");
+    }
+
+    // Recalculate summary
+    obj.summary.total_findings = obj.red_flags.length + obj.routine_surveillance.length + obj.benign_findings.length;
+    obj.summary.high_priority_count = obj.red_flags.filter(r => r.priority === "High").length;
+    obj.summary.medium_priority_count = obj.red_flags.filter(r => r.priority === "Medium").length;
+    obj.summary.low_priority_count = obj.routine_surveillance.length;
+
+    if (obj.summary.high_priority_count > 0) {
+      obj.summary.overall_risk = "Critical";
+    } else if (obj.summary.medium_priority_count > 0 || obj.summary.low_priority_count > 0) {
+      obj.summary.overall_risk = "Elevated";
+    } else if (obj.routine_surveillance.length > 0) {
+      obj.summary.overall_risk = "Routine";
+    } else {
+      obj.summary.overall_risk = "Benign";
+    }
+  }
+
+  return obj;
+}
+
+/* ==================== 3-AGENT PIPELINE (All LLM-based) ==================== */
+async function runAgent1(reportText, endpoint, model) {
+  const systemPrompt = AGENT1_INSTRUCTIONS;
+  const userContent = reportText;
+  
+  let result;
+  try {
+    const rawResponse = await callLLM(endpoint, model, systemPrompt, userContent, 3000);
+    const repaired = repairJSON(rawResponse);
+    result = JSON.parse(repaired);
+    result = validateSchema(result, "FindingsExtractor");
+  } catch (error) {
+    try {
+      const retryPrompt = systemPrompt + "\n\nCRITICAL: Return ONLY valid JSON. Start with { and end with }.";
+      const rawResponse = await callLLM(endpoint, model, retryPrompt, userContent, 3000);
+      const repaired = repairJSON(rawResponse);
+      result = JSON.parse(repaired);
+      result = validateSchema(result, "FindingsExtractor");
+    } catch (retryError) {
+      result = {
+        patient_info: { mrn: "unknown", scan_date: "unknown", indication: "unknown" },
+        findings: [],
+        expected_uptake: [],
+        technical_quality: "adequate",
+        global_notes: "Agent 1 failed",
+        comparison_available: false,
+        _error: retryError.message
+      };
+    }
+  }
+  
+  return result;
+}
+
+async function runAgent2(agent1Output, endpoint, model) {
+  // Create concise payload with only essential info
+  const findingsSummary = agent1Output.findings.map((f, idx) => ({
+    idx: idx,
+    site: f.site,
+    desc: f.description,
+    suv: f.suvmax,
+    size: f.size_mm,
+    novelty: f.novelty,
+    suspicion: f.suspicion
+  }));
+  
+  const systemPrompt = AGENT2_INSTRUCTIONS + "\n\nRULES v2.0:\n" + RULES_V2;
+  const userContent = `Findings to match:\n${JSON.stringify(findingsSummary, null, 2)}`;
+  
+  let result;
+  try {
+    const rawResponse = await callLLM(endpoint, model, systemPrompt, userContent, 3000);
+    const repaired = repairJSON(rawResponse);
+    result = JSON.parse(repaired);
+    result = validateSchema(result, "RulesEngine");
+  } catch (error) {
+    try {
+      const retryPrompt = systemPrompt + "\n\nCRITICAL: Return ONLY valid JSON. Start with { and end with }.";
+      const rawResponse = await callLLM(endpoint, model, retryPrompt, userContent, 3000);
+      const repaired = repairJSON(rawResponse);
+      result = JSON.parse(repaired);
+      result = validateSchema(result, "RulesEngine");
+    } catch (retryError) {
+      result = {
+        red_flags: [],
+        routine_surveillance: [],
+        benign_findings: [],
+        summary: {
+          total_findings: agent1Output.findings.length,
+          high_priority_count: 0,
+          medium_priority_count: 0,
+          low_priority_count: 0,
+          overall_risk: "Benign"
+        },
+        _error: retryError.message
+      };
+    }
+  }
+  
+  return result;
+}
+
+async function runAgent3(agent1Output, agent2Output, endpoint, model) {
+  const summary = {
+    patient: agent1Output.patient_info,
+    comparison: agent1Output.comparison_available ? "Available" : "Not Available",
+    risk: agent2Output.summary.overall_risk,
+    red_flags: agent2Output.red_flags.map(r => ({
+      priority: r.priority,
+      site: r.site,
+      desc: r.description,
+      rule: r.matched_rule,
+      action: r.action,
+      followup: r.followup,
+      rationale: r.rationale,
+      guideline: r.guideline
+    })),
+    routine: agent2Output.routine_surveillance.map(r => ({
+      site: r.site,
+      desc: r.description,
+      action: r.action,
+      followup: r.followup
+    })),
+    benign: agent2Output.benign_findings.map(b => ({
+      site: b.site,
+      desc: b.description
+    })),
+    expected: agent1Output.expected_uptake,
+    tech_quality: agent1Output.technical_quality
+  };
+  
+  const systemPrompt = AGENT3_INSTRUCTIONS;
+  const userContent = JSON.stringify(summary, null, 2);
+  
+  try {
+    const report = await callLLM(endpoint, model, systemPrompt, userContent, 2000);
+    return report;
+  } catch (error) {
+    return generateFallbackReport(agent1Output, agent2Output);
+  }
+}
+
+function generateFallbackReport(agent1Output, agent2Output) {
+  const lines = [];
+
+  // Title box with double-line characters
+  lines.push("╔═══════════════════════════════════════════════════════════════╗");
+  lines.push("║           PSMA-PET SAFETY NET REPORT                          ║");
+  lines.push("╚═══════════════════════════════════════════════════════════════╝");
+  lines.push("");
+
+  // Incidental findings section
+  lines.push("┌─ INCIDENTAL FINDINGS ─────────────────────────────────────────┐");
+  lines.push("");
+
+  // Combine red_flags and routine_surveillance into incidental findings
+  const allFindings = [...agent2Output.red_flags, ...agent2Output.routine_surveillance];
+
+  if (allFindings.length === 0) {
+    lines.push("  No incidental findings identified.");
+  } else {
+    allFindings.forEach((finding, idx) => {
+      lines.push(`  • ${finding.description}`);
+      // Add blank line between findings for readability
+      if (idx < allFindings.length - 1) {
+        lines.push("");
+      }
+    });
+  }
+
+  lines.push("");
+  lines.push("└───────────────────────────────────────────────────────────────┘");
+  lines.push("");
+
+  // Next steps section
+  lines.push("┌─ NEXT STEPS ──────────────────────────────────────────────────┐");
+  lines.push("");
+
+  // Combine actions from red_flags (urgent first) then routine_surveillance
+  const allActions = [];
+
+  agent2Output.red_flags.forEach(r => {
+    if (r.action && r.followup) {
+      allActions.push(`${r.action} (${r.followup})`);
+    } else if (r.action) {
+      allActions.push(r.action);
+    } else if (r.followup) {
+      allActions.push(r.followup);
+    }
+  });
+
+  agent2Output.routine_surveillance.forEach(r => {
+    if (r.action && r.followup) {
+      allActions.push(`${r.action} (${r.followup})`);
+    } else if (r.action) {
+      allActions.push(r.action);
+    } else if (r.followup) {
+      allActions.push(r.followup);
+    }
+  });
+
+  if (allActions.length === 0) {
+    lines.push("  → Routine follow-up; no urgent action required.");
+  } else {
+    allActions.forEach((action, idx) => {
+      lines.push(`  → ${action}`);
+      // Add blank line between actions for readability
+      if (idx < allActions.length - 1) {
+        lines.push("");
+      }
+    });
+  }
+
+  lines.push("");
+  lines.push("└───────────────────────────────────────────────────────────────┘");
+
+  return lines.join("\n");
+}
+
+/* ==================== UI WIRING ==================== */
+const SAMPLE1 = `PET/CT VERTEX TO MIDTHIGHS
+
+CLINICAL HISTORY: Gleason 7 prostate cancer
+
+EXAM CATEGORY: Initial staging
+
+TECHNIQUE:
+Dose: 9.8 millicurie F18 Piflufolastat (PYLARIFY)  administered intravenously
+Uptake Time: 78minutes
+Following injection of the radiopharmaceutical, PET imaging was performed from skull vertex to the midthighs. A low dose noncontrast CT scan of the same region was also performed solely for the purpose of attenuation correction and anatomic coregistration with PET images. All SUV values reported represent maximum SUV (SUVmax) unless otherwise specified.
+Diagnostic CT: Not performed.
+IV CONTRAST: None
+ENTERIC CONTRAST: No oral contrast given
+
+COMPARISON: MRI prostate 9/10/2025
+
+FINDINGS:
+
+HEAD AND NECK:
+
+BRAIN: No abnormal uptake.
+SINUSES: Unremarkable
+PHARYNX/LARYNX: No abnormal uptake.
+ORAL CAVITY: No abnormal uptake.
+SALIVARY GLANDS: No abnormal uptake.
+CERVICAL LYMPH NODES: No abnormal uptake.
+THYROID: No abnormal uptake.
+
+CHEST:
+
+LYMPH NODES: No abnormal uptake.
+MEDIASTINUM/HEART: No abnormal uptake. Normal sized heart. No pericardial effusion.
+CHEST WALL: Unremarkable
+LUNGS: Incidental 4mm non calcified pulmonary nodule in the right lower lobe with faint radio tracer uptake (SUV 2.1). Findings indeterminate and may reflect inflammatory or granulomatous change. No additional suspicious nodules identified.
+PLEURA: No abnormal uptake. No pleural effusion.
+ESOPHAGUS: Unremarkable
+
+ABDOMEN AND PELVIS:
+
+HEPATOBILIARY: No abnormal uptake.
+GALLBLADDER: Unremarkable
+SPLEEN: No abnormal uptake.
+PANCREAS: No abnormal uptake.
+ADRENAL GLANDS: No abnormal uptake.
+KIDNEYS: No abnormal uptake.
+LYMPH NODES: No abnormal uptake.
+
+BOWEL: No abnormal uptake.
+PERITONEUM: Unremarkable
+BLADDER: Unremarkable
+REPRODUCTIVE ORGANS: Multiple radiotracer avid foci in the midline peripheral zone extending from base to apex with SUV up to 52.0
+ABDOMINAL WALL: Unremarkable
+
+MUSCULOSKELETAL:
+
+SKELETAL: No abnormal uptake.
+EXTREMITIES: Unremarkable.
+CUTANEOUS TISSUES: Unremarkable
+
+REFERENCE VALUES:
+PAROTID SUV MEAN: 25.8
+BLOOD POOL SUV MEAN: 1.3
+LIVER SUV MEAN: 4.6
+
+IMPRESSION:
+
+1.   Multiple radiotracer avid foci in the midline peripheral zone extending from base to apex, consistent with prostate cancer.
+2.   No additional radiotracer avid foci are identified.
+
+Attending physician note:
+I have personally reviewed the images and resident's interpretation thereof and agree with the findings.`;
+
+const SAMPLE5 = `PET/CT VERTEX TO MIDTHIGHS
+
+CLINICAL HISTORY: Gleason 7 (4+3) prostate cancer on active surveillance
+
+EXAM CATEGORY: Restaging
+
+TECHNIQUE:
+Dose: 9.5 millicurie F18 Piflufolastat (PYLARIFY) administered intravenously
+Uptake Time: 76 minutes
+Following injection of the radiopharmaceutical, PET imaging was performed from skull vertex to the midthighs. A low dose noncontrast CT scan of the same region was also performed solely for the purpose of attenuation correction and anatomic coregistration with PET images. All SUV values reported represent maximum SUV (SUVmax) unless otherwise specified.
+Diagnostic CT: Not performed.
+IV CONTRAST: None
+ENTERIC CONTRAST: No oral contrast given
+
+COMPARISON: PSMA-PET 2/14/2025
+
+FINDINGS:
+
+HEAD AND NECK:
+
+BRAIN: No abnormal uptake.
+SINUSES: Unremarkable
+PHARYNX/LARYNX: No abnormal uptake.
+ORAL CAVITY: No abnormal uptake.
+SALIVARY GLANDS: No abnormal uptake.
+CERVICAL LYMPH NODES: No abnormal uptake.
+THYROID: Left thyroid lobe nodule measuring 1.1 cm with minimal radiotracer uptake (SUV 1.8). Background thyroid parenchyma is mildly heterogeneous.
+
+CHEST:
+
+LYMPH NODES: No abnormal uptake.
+MEDIASTINUM/HEART: No abnormal uptake. Normal sized heart. No pericardial effusion.
+CHEST WALL: Unremarkable
+LUNGS: Clear. No pulmonary nodules identified.
+PLEURA: No abnormal uptake. No pleural effusion.
+ESOPHAGUS: Unremarkable
+
+ABDOMEN AND PELVIS:
+
+HEPATOBILIARY: No abnormal uptake.
+GALLBLADDER: Unremarkable
+SPLEEN: No abnormal uptake.
+PANCREAS: No abnormal uptake.
+ADRENAL GLANDS: Right adrenal nodule measuring 1.3 cm with mild radiotracer uptake (SUV 3.2). Attenuation characteristics are indeterminate on this non-contrast study.
+KIDNEYS: No abnormal uptake.
+LYMPH NODES: No abnormal uptake.
+
+BOWEL: No abnormal uptake.
+PERITONEUM: Unremarkable
+BLADDER: Unremarkable
+REPRODUCTIVE ORGANS: Focal intense radiotracer uptake in the posterior peripheral zone of the prostate extending from mid-gland to apex with SUV up to 48.5
+ABDOMINAL WALL: Unremarkable
+
+MUSCULOSKELETAL:
+
+SKELETAL: No abnormal uptake. Mild degenerative changes noted at the lumbar spine.
+EXTREMITIES: Unremarkable.
+CUTANEOUS TISSUES: Unremarkable
+
+REFERENCE VALUES:
+PAROTID SUV MEAN: 25.3
+BLOOD POOL SUV MEAN: 1.3
+LIVER SUV MEAN: 4.9
+
+IMPRESSION:
+
+1. Focal intense radiotracer uptake in the posterior peripheral zone of the prostate, consistent with known primary malignancy.
+2. No radiotracer-avid nodal or distant metastatic disease identified.
+4. Incidental right adrenal nodule (1.3 cm, SUV 3.2) with indeterminate attenuation - recommend dedicated adrenal CT with washout protocol to exclude adenoma versus other etiology.
+
+Attending physician note:
+I have personally reviewed the images and resident's interpretation thereof and agree with the findings.`;
+
+const reportEl = document.getElementById('report');
+const statusEl = document.getElementById('status');
+const outReport = document.getElementById('reportOut');
+const outAgent1 = document.getElementById('agent1Out');
+const outAgent2 = document.getElementById('agent2Out');
+const outDebug = document.getElementById('debugOut');
+const progressBar = document.getElementById('progressBar');
+
+document.getElementById('sample1').onclick = () => { reportEl.value = SAMPLE1; };
+document.getElementById('sample5').onclick = () => { reportEl.value = SAMPLE5; };
+document.getElementById('reset').onclick = () => {
+  reportEl.value = ""; statusEl.innerHTML = "idle"; statusEl.className = "muted";
+  [outReport, outAgent1, outAgent2, outDebug].forEach(el => { el.classList.add('hidden'); el.textContent=""; });
+};
+
+document.getElementById('run').onclick = async () => {
+  const raw = reportEl.value.trim();
+  if (!raw){ alert("Paste report text or load a sample."); return; }
+  
+  const endpoint = document.getElementById('llmUrl').value.trim();
+  const model = document.getElementById('llmModel').value.trim();
+  if (!endpoint){ statusEl.innerHTML = "need LLM URL"; statusEl.className = "err"; return; }
+
+  const debugLog = [];
+  debugLog.push("=== PIPELINE START (TypeScript Parity) ===");
+  debugLog.push(`Endpoint: ${endpoint}`);
+  debugLog.push(`Model: ${model}`);
+  debugLog.push("");
+
+  progressBar.classList.add('active');
+
+  try {
+    // Agent 1: Findings Extractor (LLM)
+    statusEl.innerHTML = 'Agent 1: Extracting findings...<span class="spinner"></span>';
+    statusEl.className = "muted";
+    debugLog.push("--- AGENT 1: FINDINGS EXTRACTOR (LLM) ---");
+    const t1Start = Date.now();
+    const agent1Result = await runAgent1(raw, endpoint, model);
+    const t1End = Date.now();
+    debugLog.push(`Duration: ${t1End - t1Start}ms`);
+    debugLog.push(`Findings extracted: ${agent1Result.findings.length}`);
+    if (agent1Result._error) debugLog.push(`WARNING: ${agent1Result._error}`);
+    debugLog.push("");
+    outAgent1.textContent = JSON.stringify(agent1Result, null, 2);
+    outAgent1.classList.remove('hidden');
+
+    // Agent 2: Rules Engine (LLM with embedded rules)
+    statusEl.innerHTML = 'Agent 2: Matching rules...<span class="spinner"></span>';
+    statusEl.className = "muted";
+    debugLog.push("--- AGENT 2: RULES ENGINE EXECUTER (LLM) ---");
+    const t2Start = Date.now();
+    const agent2Result = await runAgent2(agent1Result, endpoint, model);
+    const t2End = Date.now();
+    debugLog.push(`Duration: ${t2End - t2Start}ms`);
+    debugLog.push(`Red flags: ${agent2Result.red_flags.length}`);
+    debugLog.push(`Routine surveillance: ${agent2Result.routine_surveillance.length}`);
+    debugLog.push(`Benign findings: ${agent2Result.benign_findings.length}`);
+    debugLog.push(`Overall risk: ${agent2Result.summary.overall_risk}`);
+    if (agent2Result._error) debugLog.push(`WARNING: ${agent2Result._error}`);
+    debugLog.push("");
+    outAgent2.textContent = JSON.stringify(agent2Result, null, 2);
+    outAgent2.classList.remove('hidden');
+
+    // Agent 3: Report Generator (LLM)
+    statusEl.innerHTML = 'Agent 3: Generating report...<span class="spinner"></span>';
+    statusEl.className = "muted";
+    debugLog.push("--- AGENT 3: ACTION REPORT GENERATOR (LLM) ---");
+    const t3Start = Date.now();
+    const reportText = await runAgent3(agent1Result, agent2Result, endpoint, model);
+    const t3End = Date.now();
+    debugLog.push(`Duration: ${t3End - t3Start}ms`);
+    debugLog.push("");
+    outReport.textContent = reportText;
+    outReport.classList.remove('hidden');
+
+    debugLog.push("=== PIPELINE COMPLETE ===");
+    debugLog.push(`Total time: ${t3End - t1Start}ms`);
+    debugLog.push(`LLM calls made: 3 (all agents use LLM)`);
+    debugLog.push(`Agent 2 uses embedded Rules v2.0`);
+    outDebug.textContent = debugLog.join("\n");
+    outDebug.classList.remove('hidden');
+
+    progressBar.classList.remove('active');
+    statusEl.innerHTML = "✓ Complete";
+    statusEl.className = "ok";
+  } catch (error) {
+    progressBar.classList.remove('active');
+    statusEl.innerHTML = `✗ Error: ${error.message}`;
+    statusEl.className = "err";
+    debugLog.push("");
+    debugLog.push(`=== FATAL ERROR ===`);
+    debugLog.push(error.message);
+    debugLog.push(error.stack);
+    outDebug.textContent = debugLog.join("\n");
+    outDebug.classList.remove('hidden');
+  }
+};
+
+// Test LLM connection
+document.getElementById('testLLM').onclick = async () => {
+  const endpoint = document.getElementById('llmUrl').value.trim();
+  const model = document.getElementById('llmModel').value.trim();
+  const llmStatusEl = document.getElementById('llmStatus');
+  
+  if (!endpoint) {
+    llmStatusEl.textContent = "Please provide endpoint URL";
+    llmStatusEl.className = "small err";
+    return;
+  }
+  
+  llmStatusEl.textContent = "Testing connection...";
+  llmStatusEl.className = "small";
+  
+  try {
+    const testResponse = await callLLM(endpoint, model, "You are a test assistant.", "Reply with exactly: OK", 10);
+    if (testResponse) {
+      llmStatusEl.textContent = `✓ Connected to ${model}`;
+      llmStatusEl.className = "small ok";
+    }
+  } catch (error) {
+    llmStatusEl.textContent = `✗ Connection failed: ${error.message}`;
+    llmStatusEl.className = "small err";
+  }
+};
+
+// Save LLM settings
+document.getElementById('saveLLM').onclick = () => {
+  const endpoint = document.getElementById('llmUrl').value.trim();
+  const model = document.getElementById('llmModel').value.trim();
+  localStorage.setItem('llmUrl', endpoint);
+  localStorage.setItem('llmModel', model);
+  document.getElementById('llmStatus').textContent = "✓ Saved";
+  document.getElementById('llmStatus').className = "small ok";
+  setTimeout(() => {
+    document.getElementById('llmStatus').textContent = "";
+  }, 2000);
+};
+
+// Load saved settings
+window.addEventListener('DOMContentLoaded', () => {
+  const savedUrl = localStorage.getItem('llmUrl');
+  const savedModel = localStorage.getItem('llmModel');
+  if (savedUrl) document.getElementById('llmUrl').value = savedUrl;
+  if (savedModel) document.getElementById('llmModel').value = savedModel;
+});
+
+// Copy / download
+document.getElementById('copyReport').onclick = async () => {
+  const txt = outReport.textContent || "";
+  try {
+    await navigator.clipboard.writeText(txt);
+    statusEl.innerHTML = "✓ Copied to clipboard";
+    statusEl.className = "ok";
+    setTimeout(() => { statusEl.innerHTML = ""; statusEl.className = ""; }, 2000);
+  } catch (e) {
+    alert("Copy failed. Please select and copy manually.");
+  }
+};
+
+document.getElementById('downloadReport').onclick = () => {
+  const blob = new Blob([outReport.textContent||""], {type:"text/plain"});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = "psma_safety_report.txt";
+  a.click();
+  setTimeout(()=> URL.revokeObjectURL(a.href), 1000);
+};
+</script>
+</body>
+</html>
